@@ -4,7 +4,7 @@ pipeline {
     environment {
         AWS_REGION   = 'ap-southeast-2'
         ECR_REGISTRY = '278061313986.dkr.ecr.ap-southeast-2.amazonaws.com'
-        IMAGE_NAME   = 'task-manager'
+        IMAGE_NAME   = 'taskmanagement'
         IMAGE_TAG    = "${env.BUILD_NUMBER}"
         FULL_IMAGE   = "${ECR_REGISTRY}/${IMAGE_NAME}"
     }
