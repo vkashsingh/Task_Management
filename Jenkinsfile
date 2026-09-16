@@ -50,7 +50,7 @@ pipeline {
                 echo "Deploying ${FULL_IMAGE}:${IMAGE_TAG} to Application EC2 via SSM..."
 
                 sh """
-                    COMMAND_ID=\\$(aws ssm send-command \\
+                    COMMAND_ID=\$(aws ssm send-command \\
                         --region ${AWS_REGION} \\
                         --instance-ids ${APP_INSTANCE_ID} \\
                         --document-name "AWS-RunShellScript" \\
@@ -74,18 +74,18 @@ pipeline {
                         --query "Command.CommandId" \\
                         --output text)
 
-                    echo "SSM Command ID: \\${COMMAND_ID}"
+                    echo "SSM Command ID: \$COMMAND_ID"
 
                     aws ssm wait command-executed \\
                         --region ${AWS_REGION} \\
-                        --command-id "\\${COMMAND_ID}" \\
+                        --command-id "\$COMMAND_ID" \\
                         --instance-id ${APP_INSTANCE_ID} || true
 
                     echo "--- SSM Execution Output ---"
 
                     aws ssm get-command-invocation \\
                         --region ${AWS_REGION} \\
-                        --command-id "\\${COMMAND_ID}" \\
+                        --command-id "\$COMMAND_ID" \\
                         --instance-id ${APP_INSTANCE_ID} \\
                         --query "[Status, StandardOutputContent, StandardErrorContent]" \\
                         --output text
