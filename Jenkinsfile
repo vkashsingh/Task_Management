@@ -44,54 +44,56 @@ pipeline {
         }
 
         stage('Deploy to Application EC2 via SSM') {
-            steps {
-                echo "Deploying ${FULL_IMAGE}:${IMAGE_TAG} to Application EC2 (${APP_INSTANCE_ID}) via AWS SSM..."
+    steps {
+        echo "Deploying ${FULL_IMAGE}:${IMAGE_TAG} to Application EC2 (${APP_INSTANCE_ID}) via AWS SSM..."
 
-                sh """
-                    COMMAND_ID=\$(aws ssm send-command \
-                        --region ${AWS_REGION} \
-                        --instance-ids ${APP_INSTANCE_ID} \
-                        --document-name "AWS-RunShellScript" \
-                        --comment "Deploying ${FULL_IMAGE}:${IMAGE_TAG}" \
-                        --parameters 'commands=[
-                            "set -e",
-                            "echo Logging into Amazon ECR on App EC2...",
-                            "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
-                            "echo Pulling Docker image ${FULL_IMAGE}:${IMAGE_TAG}...",
-                            "docker pull ${FULL_IMAGE}:${IMAGE_TAG}",
-                            "echo Stopping and removing existing taskmanagement container...",
-                            "docker stop taskmanagement || true",
-                            "docker rm taskmanagement || true",
-                            "echo Starting new taskmanagement container...",
-                            "docker run -d --name taskmanagement --restart unless-stopped -p 8080:8080 ${FULL_IMAGE}:${IMAGE_TAG}",
-                            "echo Waiting for application to initialize...",
-                            "sleep 10",
-                            "echo Performing health check...",
-                            "curl -f http://localhost:8080/actuator/health",
-                            "echo Deployment successfully completed!"
-                        ]' \
-                        --query "Command.CommandId" \
-                        --output text)
+        sh """
+            COMMAND_ID=\$(aws ssm send-command \
+                --region ${AWS_REGION} \
+                --instance-ids ${APP_INSTANCE_ID} \
+                --document-name "AWS-RunShellScript" \
+                --comment "Deploying ${FULL_IMAGE}:${IMAGE_TAG}" \
+                --parameters 'commands=[
+                    "set -e",
+                    "echo Logging into Amazon ECR on App EC2...",
+                    "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
+                    "echo Pulling Docker image ${FULL_IMAGE}:${IMAGE_TAG}...",
+                    "docker pull ${FULL_IMAGE}:${IMAGE_TAG}",
+                    "echo Stopping and removing existing taskmanagement container...",
+                    "docker stop taskmanagement || true",
+                    "docker rm taskmanagement || true",
+                    "echo Starting new taskmanagement container...",
+                    "docker run -d --name taskmanagement --restart unless-stopped --network management-task-network -p 8080:8080 -e DB_HOST=my-postgres -e DB_PORT=5432 -e DB_NAME=taskdb -e DB_USERNAME=postgres -e DB_PASSWORD=root ${FULL_IMAGE}:${IMAGE_TAG}",
+                    "echo Waiting for application to initialize...",
+                    "sleep 10",
+                    "echo Performing health check...",
+                    "curl -f http://localhost:8080/actuator/health",
+                    "echo Deployment successfully completed!"
+                ]' \
+                --query "Command.CommandId" \
+                --output text)
 
-                    echo "SSM Command sent. Command ID: \${COMMAND_ID}"
-                    echo "Waiting for remote execution on EC2 instance ${APP_INSTANCE_ID}..."
+            echo "SSM Command sent. Command ID: \${COMMAND_ID}"
+            echo "Waiting for remote execution on EC2 instance ${APP_INSTANCE_ID}..."
 
-                    aws ssm wait command-executed \
-                        --region ${AWS_REGION} \
-                        --command-id "\${COMMAND_ID}" \
-                        --instance-id ${APP_INSTANCE_ID}
+            aws ssm wait command-executed \
+                --region ${AWS_REGION} \
+                --command-id "\${COMMAND_ID}" \
+                --instance-id ${APP_INSTANCE_ID} || true
 
-                    echo "--- SSM Execution Output ---"
-                    aws ssm get-command-invocation \
-                        --region ${AWS_REGION} \
-                        --command-id "\${COMMAND_ID}" \
-                        --instance-id ${APP_INSTANCE_ID} \
-                        --query "[Status, StandardOutputContent, StandardErrorContent]" \
-                        --output text
-                """
-            }
-        }
+            echo "--- SSM Execution Output ---"
+
+            aws ssm get-command-invocation \
+                --region ${AWS_REGION} \
+                --command-id "\${COMMAND_ID}" \
+                --instance-id ${APP_INSTANCE_ID} \
+                --query "[Status, StandardOutputContent, StandardErrorContent]" \
+                --output text
+        """
     }
+}
+    }
+}
 
     post {
         always {
