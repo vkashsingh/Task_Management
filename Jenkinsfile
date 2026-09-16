@@ -7,6 +7,7 @@ pipeline {
         IMAGE_NAME   = 'taskmanagement'
         IMAGE_TAG    = "${env.BUILD_NUMBER}"
         FULL_IMAGE   = "${ECR_REGISTRY}/${IMAGE_NAME}"
+        APP_INSTANCE_ID = "i-0556e346dce404efb"
     }
 
     stages {
@@ -41,7 +42,20 @@ pipeline {
                 sh "docker push ${FULL_IMAGE}:latest"
             }
         }
-    }
+        stage('SSM Test') {
+        steps {
+            echo 'Testing AWS Systems Manager connection to Application EC2...'
+
+            sh """
+                aws ssm send-command \
+                --region ${AWS_REGION} \
+                --instance-ids ${APP_INSTANCE_ID} \
+                --document-name "AWS-RunShellScript" \
+                --parameters 'commands=["echo Jenkins SSM connection successful"]'
+            """
+             }
+        }
+}
 
     post {
         always {
