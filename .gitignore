@@ -1,12 +1,23 @@
+# Maven
 target/
 !.mvn/wrapper/maven-wrapper.jar
-!mvnw
-!mvnw.cmd
-.mvn/
+
+# IDE
 .idea/
+.vscode/
 *.iml
 .classpath
 .project
 .settings/
+
+# OS
 .DS_Store
+
+# Logs
 *.log
+
+# Environment / secrets
+.env
+.env.*
+application-local.yml
+application-local.properties
