@@ -45,53 +45,64 @@ pipeline {
             }
         }
 
-        stage('Deploy to Application EC2 via SSM') {
-            steps {
-                echo "Deploying ${FULL_IMAGE}:${IMAGE_TAG} to Application EC2 via SSM..."
+       stage('Deploy to Application EC2 via SSM') {
+    steps {
+        echo "Deploying ${FULL_IMAGE}:${IMAGE_TAG} to Application EC2..."
 
-                sh """
-                    COMMAND_ID=\$(aws ssm send-command \\
-                        --region ${AWS_REGION} \\
-                        --instance-ids ${APP_INSTANCE_ID} \\
-                        --document-name "AWS-RunShellScript" \\
-                        --comment "Deploying ${FULL_IMAGE}:${IMAGE_TAG}" \\
-                        --parameters 'commands=[
-                            "set -e",
-                            "echo Logging into Amazon ECR...",
-                            "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
-                            "echo Pulling image...",
-                            "docker pull ${FULL_IMAGE}:${IMAGE_TAG}",
-                            "echo Stopping old container...",
-                            "docker stop taskmanagement || true",
-                            "docker rm taskmanagement || true",
-                            "echo Starting new container...",
-                            "docker run -d --name taskmanagement --restart unless-stopped --network management-task-network -p 8080:8080 -e DB_HOST=my-postgres -e DB_PORT=5432 -e DB_NAME=taskdb -e DB_USERNAME=postgres -e DB_PASSWORD=root ${FULL_IMAGE}:${IMAGE_TAG}",
-                            "echo Waiting for application...",
-                            "sleep 10",
-                            "echo Performing health check...",
-                            "curl -f http://localhost:8080/actuator/health"
-                        ]' \\
-                        --query "Command.CommandId" \\
-                        --output text)
+        sh """
+            # Send deployment commands to Application EC2
 
-                    echo "SSM Command ID: \$COMMAND_ID"
+            COMMAND_ID=\\$(aws ssm send-command \\
+                --region ${AWS_REGION} \\
+                --instance-ids ${APP_INSTANCE_ID} \\
+                --document-name "AWS-RunShellScript" \\
+                --comment "Deploy ${FULL_IMAGE}:${IMAGE_TAG}" \\
+                --parameters 'commands=[
 
-                    aws ssm wait command-executed \\
-                        --region ${AWS_REGION} \\
-                        --command-id "\$COMMAND_ID" \\
-                        --instance-id ${APP_INSTANCE_ID} || true
+                    # Login to ECR
+                    "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
 
-                    echo "--- SSM Execution Output ---"
+                    # Pull new application image
+                    "docker pull ${FULL_IMAGE}:${IMAGE_TAG}",
 
-                    aws ssm get-command-invocation \\
-                        --region ${AWS_REGION} \\
-                        --command-id "\$COMMAND_ID" \\
-                        --instance-id ${APP_INSTANCE_ID} \\
-                        --query "[Status, StandardOutputContent, StandardErrorContent]" \\
-                        --output text
-                """
-            }
-        }
+                    # Stop and remove old container
+                    "docker stop taskmanagement || true",
+                    "docker rm taskmanagement || true",
+
+                    # Start new application container
+                    "docker run -d --name taskmanagement --restart unless-stopped --network management-task-network -p 8080:8080 -e DB_HOST=my-postgres -e DB_PORT=5432 -e DB_NAME=taskdb -e DB_USERNAME=postgres -e DB_PASSWORD=root ${FULL_IMAGE}:${IMAGE_TAG}",
+
+                    # Wait for application startup
+                    "sleep 10",
+
+                    # Verify application health
+                    "curl -f http://localhost:8080/actuator/health",
+
+                    # Remove stopped containers
+                    "docker container prune -f"
+
+                ]' \\
+                --query "Command.CommandId" \\
+                --output text)
+
+            echo "SSM Command ID: \\$COMMAND_ID"
+
+            # Wait for deployment to finish
+            aws ssm wait command-executed \\
+                --region ${AWS_REGION} \\
+                --command-id "\\$COMMAND_ID" \\
+                --instance-id ${APP_INSTANCE_ID}
+
+            # Show deployment result
+            aws ssm get-command-invocation \\
+                --region ${AWS_REGION} \\
+                --command-id "\\$COMMAND_ID" \\
+                --instance-id ${APP_INSTANCE_ID} \\
+                --query "[Status, StandardOutputContent, StandardErrorContent]" \\
+                --output text
+        """
+    }
+}
     }
 
     post {
